@@ -28,7 +28,7 @@ class MAML:
             self.loss_func = mse
             self.forward = self.forward_fc
             self.construct_weights = self.construct_fc_weights
-        elif FLAGS.datasource == 'omniglot' or FLAGS.datasource == 'miniimagenet':
+        elif FLAGS.datasource == 'omniglot' or FLAGS.datasource == 'miniimagenet' or FLAGS.datasource == 'kdd':
             self.loss_func = xent
             self.classification = True
             if FLAGS.conv:
@@ -210,7 +210,11 @@ class MAML:
     def forward_conv(self, inp, weights, reuse=False, scope=''):
         # reuse is for the normalization parameters.
         channels = self.channels
-        inp = tf.reshape(inp, [-1, self.img_size, self.img_size, channels])
+
+        if FLAGS.datasource == 'kdd':
+            inp = tf.reshape(inp, [-1, self.dim_input, 1, 1])
+        else:
+            inp = tf.reshape(inp, [-1, self.img_size, self.img_size, channels])
 
         hidden1 = conv_block(inp, weights['conv1'], weights['b1'], reuse, scope+'0')
         hidden2 = conv_block(hidden1, weights['conv2'], weights['b2'], reuse, scope+'1')
@@ -223,5 +227,3 @@ class MAML:
             hidden4 = tf.reduce_mean(hidden4, [1, 2])
 
         return tf.matmul(hidden4, weights['w5']) + weights['b5']
-
-

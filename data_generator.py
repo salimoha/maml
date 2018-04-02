@@ -75,6 +75,26 @@ class DataGenerator(object):
             self.metatrain_character_folders = metatrain_folders
             self.metaval_character_folders = metaval_folders
             self.rotations = config.get('rotations', [0])
+        elif FLAGS.datasource == 'kdd':
+            # Set the dimension of the input and output
+            self.num_classes = config.get('num_classes', FLAGS.num_classes)
+            self.dim_input = 41
+            self.dim_output = self.num_classes
+
+            # Set the data folders (somewhat copied from omniglot's setup)
+            data_folder = config.get('data_folder', './data/kdd.nosync')
+            class_folders = [os.path.join(data_folder, classname) \
+                for classname in os.listdir(data_folder) \
+                if os.path.isdir(os.path.join(data_folder, classname))]
+            random.seed(3)
+            random.shuffle(class_folders)
+            num_val = 5
+            num_train = config.get('num_train', 12) - num_val
+            self.metatrain_character_folders = class_folders[:num_train]
+            if FLAGS.test_set:
+                self.metaval_character_folders = class_folders[num_train+num_val:]
+            else:
+                self.metaval_character_folders = class_folders[num_train:num_train+num_val]
         else:
             raise ValueError('Unrecognized data source')
 
@@ -89,9 +109,10 @@ class DataGenerator(object):
             num_total_batches = 600
 
         # make list of files
-        print('Generating filenames')
         all_filenames = []
-        for _ in range(num_total_batches):
+        for i in range(num_total_batches):
+            if i % 5000 == 0:
+                print("Generating filenames iteration:", i, "/", num_total_batches)
             sampled_character_folders = random.sample(folders, self.num_classes)
             random.shuffle(sampled_character_folders)
             labels_and_images = get_images(sampled_character_folders, range(self.num_classes), nb_samples=self.num_samples_per_class, shuffle=False)
@@ -100,8 +121,64 @@ class DataGenerator(object):
             filenames = [li[1] for li in labels_and_images]
             all_filenames.extend(filenames)
 
+        print("Generating filenames iteration:", num_total_batches, "/", num_total_batches)
+        print("Creating filename queue")
+
         # make queue for tensorflow to read from
         filename_queue = tf.train.string_input_producer(tf.convert_to_tensor(all_filenames), shuffle=False)
+
+        if FLAGS.datasource == 'kdd':
+            print("Decoding csv")
+
+            # create the record defaults for loading csv files
+            record_defaults = [tf.constant([], dtype=tf.float32)] * self.dim_input
+
+            data_reader = tf.WholeFileReader() # the files are small so this reader is fine
+            _, data_file = data_reader.read(filename_queue)
+            data_fields = tf.decode_csv(data_file, record_defaults=record_defaults, field_delim=',')
+
+            data_fields = tf.cast(data_fields, tf.float32)
+
+            num_preprocess_threads = 1 # TODO - enable this to be set to >1
+            min_queue_examples = 256
+            examples_per_batch = self.num_classes * self.num_samples_per_class
+            batch_data_size = self.batch_size  * examples_per_batch
+
+            print('Batching data')
+            data = tf.train.batch(
+                [data_fields],
+                batch_size=batch_data_size,
+                num_threads=num_preprocess_threads,
+                capacity=min_queue_examples + 3 * batch_data_size,
+                )
+
+            all_data_batches, all_label_batches = [], []
+            print('Manipulating data to be right shape')
+
+            for i in range(self.batch_size):
+                data_batch = data[i*examples_per_batch:(i+1)*examples_per_batch]
+
+                label_batch = tf.convert_to_tensor(labels)
+                new_list, new_label_list = [], []
+                for k in range(self.num_samples_per_class):
+                    class_idxs = tf.range(0, self.num_classes)
+                    class_idxs = tf.random_shuffle(class_idxs)
+                    true_idxs = class_idxs*self.num_samples_per_class + k
+
+                    new_list.append(tf.gather(data_batch, true_idxs))
+                    new_label_list.append(tf.gather(label_batch, true_idxs))
+
+                new_list = tf.concat(new_list, 0) # has shape [self.num_classes*self.num_samples_per_class, self.dim_input]
+                new_label_list = tf.concat(new_label_list, 0)
+                all_data_batches.append(new_list)
+                all_label_batches.append(new_label_list)
+
+            all_data_batches  = tf.stack(all_data_batches)
+            all_label_batches = tf.stack(all_label_batches)
+            all_label_batches = tf.one_hot(all_label_batches, self.num_classes)
+
+            return all_data_batches, all_label_batches
+
         print('Generating image processing ops')
         image_reader = tf.WholeFileReader()
         _, image_file = image_reader.read(filename_queue)

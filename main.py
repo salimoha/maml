@@ -19,6 +19,14 @@ Usage Instructions:
     5-way 5-shot mini imagenet:
         python main.py --datasource=miniimagenet --metatrain_iterations=60000 --meta_batch_size=4 --update_batch_size=5 --update_lr=0.01 --num_updates=5 --num_classes=5 --logdir=logs/miniimagenet5shot/ --num_filters=32 --max_pool=True
 
+    5-way 1-shot kdd:
+        python main.py --datasource=kdd --metatrain_iterations=50000 --meta_batch_size=32 --update_batch_size=1 --update_lr=0.1 --num_updates=1 --logdir=logs/kdd
+
+        python main.py --datasource=kdd --metatrain_iterations=50000 --meta_batch_size=32 --update_batch_size=1 --update_lr=0.4 --num_updates=1 --logdir=logs/kdd
+
+    5-way 5-shot kdd:
+        python main.py --datasource=kdd --metatrain_iterations=50000 --meta_batch_size=32 --update_batch_size=5 --num_classes=5 --update_lr=0.1 --num_updates=1 --logdir=logs/kdd
+
     To run evaluation, use the '--train=False' flag and the '--test_set=True' flag to use the test set.
 
     For omniglot and miniimagenet training, acquire the dataset online, put it in the correspoding data directory, and see the python script instructions in that directory to preprocess the data.
@@ -115,6 +123,12 @@ def train(model, saver, sess, exp_string, data_generator, resume_itr=0):
         result = sess.run(input_tensors, feed_dict)
 
         if itr % SUMMARY_INTERVAL == 0:
+#            print("-----------------------------------------------------------")
+#            print("Summary interval")
+#            print("result[-2]:", result[-2])
+#            print("result[1]:", result[1])
+#            print("result[-1]:", result[-1])
+#            print("-----------------------------------------------------------")
             prelosses.append(result[-2])
             if FLAGS.log:
                 train_writer.add_summary(result[1], itr)
@@ -199,7 +213,9 @@ def test(model, saver, sess, exp_string, data_generator, test_num_updates=None):
     ci95 = 1.96*stds/np.sqrt(NUM_TEST_POINTS)
 
     print('Mean validation accuracy/loss, stddev, and confidence intervals')
-    print((means, stds, ci95))
+    #print((means, stds, ci95))
+    for item in (means, stds, ci95):
+        print(item)
 
     out_filename = FLAGS.logdir +'/'+ exp_string + '/' + 'test_ubs' + str(FLAGS.update_batch_size) + '_stepsize' + str(FLAGS.update_lr) + '.csv'
     out_pkl = FLAGS.logdir +'/'+ exp_string + '/' + 'test_ubs' + str(FLAGS.update_batch_size) + '_stepsize' + str(FLAGS.update_lr) + '.pkl'
@@ -258,7 +274,7 @@ def main():
     else:
         dim_input = data_generator.dim_input
 
-    if FLAGS.datasource == 'miniimagenet' or FLAGS.datasource == 'omniglot':
+    if FLAGS.datasource == 'miniimagenet' or FLAGS.datasource == 'omniglot' or FLAGS.datasource == 'kdd':
         tf_data_load = True
         num_classes = data_generator.num_classes
 

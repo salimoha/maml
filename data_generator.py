@@ -80,11 +80,11 @@ class DataGenerator(object):
         elif FLAGS.datasource == 'kdd':
             # Set the dimension of the input and output
             self.num_classes = config.get('num_classes', FLAGS.num_classes)
-            self.dim_input = 41
+            self.dim_input = 16
             self.dim_output = self.num_classes
 
             # Set the data folders (somewhat copied from omniglot's setup)
-            data_folder = config.get('data_folder', './data/kdd.nosync')
+            data_folder = config.get('data_folder', './data/kdd_autoencoder.nosync')
             class_folders = [os.path.join(data_folder, classname) \
                 for classname in os.listdir(data_folder) \
                 if os.path.isdir(os.path.join(data_folder, classname))]
